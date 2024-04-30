@@ -50,6 +50,11 @@ def process(file: click.File, multicore: bool, cores: Optional[int], output: cli
     end_time = time.time()
 
     print(f'Processing time: {end_time - start_time}')
+
+    with open(output + '.txt', 'w') as f:
+        for data in final_data:
+            f.write(f'{" ".join(data.sequence)}\n')
+
     with open(output, 'w') as f:
         for data in final_data:
             f.write(f'{data}\n')
