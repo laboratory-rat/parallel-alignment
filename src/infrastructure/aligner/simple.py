@@ -1,16 +1,12 @@
-from typing import Tuple
+from typing import Tuple, List
+
 import numpy as np
-from pydantic import BaseModel
+
+from src.domain.sequence_data import SequenceData
+from src.infrastructure.aligner.base import AlignerParams, Aligner
 
 
-class AlignerParams(BaseModel):
-    gap_penalty: float = -1
-    familiar_replace_panalty: float = -.5
-    non_familiar_replace_penalty: float = -1.5
-    match_score: float = 1
-
-
-class Aligner:
+class AlignerSimple(Aligner):
     params: AlignerParams
     familiar_pairs = [('A', 'G'), ('C', 'T'), ('C', 'U')]
 
@@ -18,32 +14,32 @@ class Aligner:
         self.params = params
 
     def clone(self) -> 'Aligner':
-        return Aligner(self.params)
+        return AlignerSimple(self.params)
 
     def get_pair_score(self, a: str, b: str) -> float:
         if a == b:
             return self.params.match_score
-        
+
         if (a, b) in self.familiar_pairs or (b, a) in self.familiar_pairs:
             return self.params.familiar_replace_panalty
-        
+
         return self.params.non_familiar_replace_penalty
 
     def needleman_wunsch(self, seq1, seq2) -> Tuple[str, str, float]:
         n, m = len(seq1), len(seq2)
-        score = np.zeros((n+1, m+1))
+        score = np.zeros((n + 1, m + 1))
         gap_penalty = self.params.gap_penalty
-        
-        for i in range(n+1):
+
+        for i in range(n + 1):
             score[i][0] = gap_penalty * i
-        for j in range(m+1):
+        for j in range(m + 1):
             score[0][j] = gap_penalty * j
 
-        for i in range(1, n+1):
-            for j in range(1, m+1):
-                match = score[i-1][j-1] + self.get_pair_score(seq1[i-1], seq2[j-1])
-                delete = score[i-1][j] + gap_penalty
-                insert = score[i][j-1] + gap_penalty
+        for i in range(1, n + 1):
+            for j in range(1, m + 1):
+                match = score[i - 1][j - 1] + self.get_pair_score(seq1[i - 1], seq2[j - 1])
+                delete = score[i - 1][j] + gap_penalty
+                insert = score[i][j - 1] + gap_penalty
                 score[i][j] = max(match, delete, insert)
 
         # Traceback
@@ -51,31 +47,31 @@ class Aligner:
         i, j = n, m
         while i > 0 and j > 0:
             score_current = score[i][j]
-            score_diagonal = score[i-1][j-1]
-            score_up = score[i][j-1]
-            score_left = score[i-1][j]
+            score_diagonal = score[i - 1][j - 1]
+            score_up = score[i][j - 1]
+            score_left = score[i - 1][j]
 
-            if score_current == score_diagonal + self.get_pair_score(seq1[i-1], seq2[j-1]):
-                align1 += seq1[i-1]
-                align2 += seq2[j-1]
+            if score_current == score_diagonal + self.get_pair_score(seq1[i - 1], seq2[j - 1]):
+                align1 += seq1[i - 1]
+                align2 += seq2[j - 1]
                 i -= 1
                 j -= 1
             elif score_current == score_left + gap_penalty:
-                align1 += seq1[i-1]
+                align1 += seq1[i - 1]
                 align2 += '-'
                 i -= 1
             elif score_current == score_up + gap_penalty:
                 align1 += '-'
-                align2 += seq2[j-1]
+                align2 += seq2[j - 1]
                 j -= 1
 
         while i > 0:
-            align1 += seq1[i-1]
+            align1 += seq1[i - 1]
             align2 += '-'
             i -= 1
         while j > 0:
             align1 += '-'
-            align2 += seq2[j-1]
+            align2 += seq2[j - 1]
             j -= 1
 
         return align1[::-1], align2[::-1], float(score[n][m])
@@ -142,3 +138,21 @@ class Aligner:
         updated_msa.append(align_new_seq)
 
         return updated_msa
+
+    def process_batch(self, batch: List[SequenceData]) -> List[SequenceData]:
+        if len(batch) < 2:
+            return batch
+
+        (seq1, seq2, _) = self.needleman_wunsch(batch[0].sequence, batch[1].sequence)
+        sliced_batch = batch[2:]
+        batch = [batch[0], batch[1]] + sliced_batch
+        existing_alignment = [seq1, seq2]
+
+        for sequence in batch[2:]:
+            new_values = self.align_to_existing_alignment(existing_alignment, sequence.sequence)
+            for index in range(len(new_values) - 1):
+                batch[index].sequence = new_values[index]
+            sequence.sequence = new_values[-1]
+            existing_alignment.append(new_values[-1])
+
+        return batch
