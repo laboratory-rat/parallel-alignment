@@ -30,10 +30,11 @@ class DataProcessor:
         self.worker = mp_worker
 
     def process(self) -> List[SequenceData]:
+        start_time_full = time.time()
         self.worker.setup(self.aligner.process_batch)
         sequences_data_list = self.file_reader.read()
 
-        start_time = time.time()
+        start_time_only_process = time.time()
         if self.props.limit and len(sequences_data_list) > self.props.limit:
             sequences_data_list = sequences_data_list[:self.props.limit]
 
@@ -48,7 +49,7 @@ class DataProcessor:
         if len(batches) == 1:
             result = self.aligner.process_batch(batches[0])
             end_time = time.time()
-            print(f'Processing time: {end_time - start_time}')
+            print(f'Processing time: {end_time - start_time_full}')
             return result
 
         if len(batches[-1]) < 3:
@@ -62,7 +63,9 @@ class DataProcessor:
 
             batches = [updated_batches[i] + updated_batches[i + 1] for i in range(0, len(updated_batches), 2)]
 
-        end_time = time.time()
-        print(f'Processing time: {end_time - start_time}')
+        end_time_only_process = time.time()
+        print(f'Processing timeonly process : {end_time_only_process - start_time_only_process}')
         self.worker.close()
+        end_time_full = time.time()
+        print(f'Processing time FULL: {end_time_full - start_time_full}')
         return batches[0]

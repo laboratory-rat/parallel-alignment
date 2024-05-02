@@ -5,7 +5,7 @@ This is a simple example of parallel processing in python.
 ## To run single machine parallel processing
 
 ```bash
-python main.py process {FILE_TO_PROCESS} [--process_type {sync | poll | dask | celery}] [--workers N] [--output {OUTPUT_FILE}] [--limit {LIMIT}]
+python main.py process {FILE_TO_PROCESS} [--process_type {sync | poll | dask}] [--workers N] [--output {OUTPUT_FILE}] [--limit {LIMIT}]
 ```
 
 - `FILE_TO_PROCESS`: The file to process
