@@ -2,6 +2,21 @@
 
 This is a simple example of parallel processing in python.
 
+## Prepare
+
+- Start virtual environment
+
+```bash
+python -m venv venv
+./venv/Scripts/activate.ps1
+```
+
+- Install requirements
+
+```bash
+pip install -r requirements.txt
+```
+
 ## To run single machine parallel processing
 
 ```bash
