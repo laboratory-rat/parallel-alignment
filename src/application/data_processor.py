@@ -7,6 +7,7 @@ from src.domain.helpers import helper_split_to_batches_generator
 from src.domain.sequence_data import SequenceData
 from src.infrastructure.aligner.base import Aligner
 from src.infrastructure.logger import AppLogger
+from src.infrastructure.metadata import Metadata
 from src.infrastructure.reader import Reader
 from src.infrastructure.worker.base import Worker
 
@@ -55,14 +56,19 @@ class DataProcessor:
         if len(batches[-1]) < 3:
             batches = batches[:-2] + [batches[-2] + batches[-1]]
 
+        metadata = Metadata()
         while len(batches) > 1:
+            worker_time_start = time.time()
             updated_batches = self.worker.run(batches)
+            worker_time_end = time.time()
+            metadata.add(worker_time_start, worker_time_end)
             if len(updated_batches) % 2 != 0:
                 updated_batches[-2] = updated_batches[-1] + updated_batches[-2]
                 updated_batches = updated_batches[:-1]
 
             batches = [updated_batches[i] + updated_batches[i + 1] for i in range(0, len(updated_batches), 2)]
 
+        print('metadata', metadata.sequences)
         end_time_only_process = time.time()
         print(f'Processing timeonly process : {end_time_only_process - start_time_only_process}')
         self.worker.close()
