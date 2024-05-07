@@ -1,4 +1,5 @@
 import time
+from datetime import datetime
 from typing import List
 
 from pydantic import BaseModel
@@ -58,9 +59,9 @@ class DataProcessor:
 
         metadata = Metadata()
         while len(batches) > 1:
-            worker_time_start = time.time()
+            worker_time_start = datetime.now()
             updated_batches = self.worker.run(batches)
-            worker_time_end = time.time()
+            worker_time_end = datetime.now()
             metadata.add(worker_time_start, worker_time_end)
             if len(updated_batches) % 2 != 0:
                 updated_batches[-2] = updated_batches[-1] + updated_batches[-2]
