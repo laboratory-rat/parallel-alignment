@@ -1,5 +1,8 @@
 import time
+
 from typing import Optional, Literal, List
+import matplotlib.pyplot as plt
+import numpy as np
 
 import click
 
@@ -75,6 +78,42 @@ def process(file: click.File, process_type: ProcessType, workers: int, numba: bo
             f.write(f'{data}\n')
 
 
+def run_combination(file: click.File, process_type: ProcessType, workers: int, numba: bool, limit: Optional[int]):
+    start_time = time.time()
+    process(file, process_type, workers, numba, limit)
+
+    end_time = time.time()
+    execution_time = end_time - start_time
+    return execution_time
+
+
+@click.command()
+@click.argument('file', type=click.File('r'))
+def benchmark(file: click.File):
+    combinations = [
+        {'process_type': 'sync', 'workers': 4, 'numba': False, 'limit': 100},
+        {'process_type': 'pool', 'workers': 4, 'numba': False, 'limit': 100},
+    ]
+
+    results = {}
+    for combination in combinations:
+        times = []
+        execution_time = run_combination(file, **combination)
+        times.append(execution_time)
+        avg_time = np.mean(times)
+        combination_label = str(combination)
+        results[combination_label] = avg_time
+
+    plt.bar(results.keys(), results.values())
+    plt.xlabel('Combination')
+    plt.ylabel('Average Execution Time (s)')
+    plt.title('Benchmark Results')
+    plt.xticks(rotation=45, ha='right')
+    plt.tight_layout()
+    plt.show()
+
+
+cli.add_command(benchmark)
 cli.add_command(process)
 
 
