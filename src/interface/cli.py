@@ -80,7 +80,41 @@ def process(file: click.File, process_type: ProcessType, workers: int, numba: bo
 
 def run_combination(file: click.File, process_type: ProcessType, workers: int, numba: bool, limit: Optional[int]):
     start_time = time.time()
-    process(file, process_type, workers, numba, limit)
+    output = 'output.fasta'
+
+    workers = max(1, workers)
+    if process_type not in mp_worker_to_process_type:
+        click.echo(f'Invalid process type: {process_type}')
+        click.echo(f'Valid process types: {list(mp_worker_to_process_type.keys())}')
+        return
+
+    file_name = file.name
+    click.echo(f'File: {file_name}')
+    click.echo(f'Process type: {process_type}')
+    click.echo(f'Workers: {workers}')
+    click.echo(f'Numba: {numba}')
+    click.echo(f'Output: {output}')
+    click.echo('Processing...')
+
+    worker = mp_worker_to_process_type[process_type](workers)
+    props = ProcessorProps(
+        limit=limit,
+    )
+    file_reader = Reader(file_name)
+    if numba:
+        aligner = AlignerNumba()
+    else:
+        aligner = AlignerSimple()
+    processor_instance = DataProcessor(props, worker, file_reader, aligner)
+    final_data = processor_instance.process()
+
+    with open(output + '.txt', 'w') as f:
+        for data in final_data:
+            f.write(f'{" ".join(data.sequence)}\n')
+
+    with open(output, 'w') as f:
+        for data in final_data:
+            f.write(f'{data}\n')
 
     end_time = time.time()
     execution_time = end_time - start_time
@@ -92,7 +126,11 @@ def run_combination(file: click.File, process_type: ProcessType, workers: int, n
 def benchmark(file: click.File):
     combinations = [
         {'process_type': 'sync', 'workers': 4, 'numba': False, 'limit': 100},
+        {'process_type': 'sync', 'workers': 4, 'numba': False, 'limit': 200},
         {'process_type': 'pool', 'workers': 4, 'numba': False, 'limit': 100},
+        {'process_type': 'pool', 'workers': 4, 'numba': False, 'limit': 200},
+        {'process_type': 'dask', 'workers': 4, 'numba': False, 'limit': 100},
+        {'process_type': 'dask', 'workers': 4, 'numba': False, 'limit': 200},
     ]
 
     results = {}
@@ -101,7 +139,7 @@ def benchmark(file: click.File):
         execution_time = run_combination(file, **combination)
         times.append(execution_time)
         avg_time = np.mean(times)
-        combination_label = str(combination)
+        combination_label = f"{combination['process_type']} (Limit: {combination['limit']})"
         results[combination_label] = avg_time
 
     plt.bar(results.keys(), results.values())
@@ -110,6 +148,7 @@ def benchmark(file: click.File):
     plt.title('Benchmark Results')
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
+    plt.grid(True)
     plt.show()
 
 
