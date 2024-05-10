@@ -48,7 +48,8 @@ def cli():
 @click.option('--numba', is_flag=True, help='Use numba for alignment', default=False)
 @click.option('--output', type=str, help='Output file')
 @click.option('--limit', help='Limit the number of sequences to process', default=None)
-def process(file: click.File, process_type: ProcessType, workers: int, numba: bool, output: click.File, limit: Optional[int]):
+@click.option('--io', is_flag=True, default=False, help='Allow worker to communicate with console')
+def process(file: click.File, process_type: ProcessType, workers: int, numba: bool, output: click.File, limit: Optional[int], io: bool):
     if not output:
         output = 'output.fasta'
 
@@ -66,7 +67,7 @@ def process(file: click.File, process_type: ProcessType, workers: int, numba: bo
     click.echo(f'Output: {output}')
     click.echo('Processing...')
 
-    worker = mp_worker_to_process_type[process_type](workers, True)
+    worker = mp_worker_to_process_type[process_type](workers, io)
     props = ProcessorProps(
         limit=limit,
     )
@@ -77,9 +78,12 @@ def process(file: click.File, process_type: ProcessType, workers: int, numba: bo
         aligner = AlignerSimple()
     processor_instance = DataProcessor(props, worker, file_reader, aligner)
     final_data = processor_instance.process()
+    click.echo(f'Startup time: {final_data.metadata.total_time_ms - final_data.metadata.processing_time_ms}')
+    click.echo(f'Processing time: {final_data.metadata.processing_time_ms}')
+
 
     with open(output + '.txt', 'w') as f:
-        for data in final_data:
+        for data in final_data.value:
             f.write(f'{" ".join(data.sequence)}\n')
 
     with open(output, 'w') as f:
@@ -118,8 +122,8 @@ def run_combination(file: click.File, process_type: ProcessType, workers: int, n
 @click.argument('file', type=click.File('r'))
 def benchmark(file: click.File):
     process_types = mp_worker_to_process_type.keys()
-    process_duration = [100, 200]
-    workers = [4]
+    process_duration = [200, 400]
+    workers = [10]
     numba = [False]
 
     combinations = [
@@ -130,11 +134,8 @@ def benchmark(file: click.File):
         for n in numba
     ]
 
-    timed_results = {}
-    results = {}
     results_typed: List[BenchmarkSample] = []
     for combination in combinations:
-        times = []
         combination_result = run_combination(file, **combination)
         results_typed.append(BenchmarkSample(
             process_time_worker=combination_result.metadata.processing_time_ms,

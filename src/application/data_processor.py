@@ -31,7 +31,7 @@ class DataProcessor:
     aligner: Aligner
     logger: AppLogger = AppLogger()
     worker: Worker[List[SequenceData]]
-    first_batch_size = 10
+    first_batch_size = 3
 
     def __init__(self, props: ProcessorProps, mp_worker, file_reader: Reader, aligner: Aligner):
         self.props = props
@@ -79,6 +79,7 @@ class DataProcessor:
 
             batches = [updated_batches[i] + updated_batches[i + 1] for i in range(0, len(updated_batches), 2)]
 
+        final_batches = self.worker.run(batches)
         timer_stop = time.time()
         self.worker.close()
-        return ProcessorResult(value=batches[0], metadata=_create_metadata(timer_stop))
+        return ProcessorResult(value=final_batches[0], metadata=_create_metadata(timer_stop))
