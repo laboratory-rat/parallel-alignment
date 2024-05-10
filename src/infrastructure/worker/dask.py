@@ -21,15 +21,16 @@ class WorkerDask(Worker, Generic[BatchType]):
         self.cluster = LocalCluster(dashboard_address=f':{self.port}', n_workers=self.workers)
         self.client = self.cluster.get_client()
 
-        webbrowser.open(self.local_address)
-        print(f'View the dashboard at {self.local_address}')
+        if self.io:
+            webbrowser.open(self.local_address)
+        self.console(f'View the dashboard at {self.local_address}')
 
     def run(self, batches: BatchType) -> BatchType:
         features = [self.client.submit(self.fn, batch) for batch in batches]
         return self.client.gather(features)
 
     def close(self):
-        input('Press Enter to close the dashboard')
+        self.input('Press Enter to close the dashboard')
         super().close()
         self.client.close()
         self.cluster.close()

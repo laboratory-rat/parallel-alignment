@@ -5,13 +5,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import click
+from pydantic import BaseModel
 
-from src.application.data_processor import ProcessorProps, DataProcessor
+from src.application.data_processor import ProcessorProps, DataProcessor, ProcessorResult
 from src.domain.sequence_data import SequenceData
 from src.infrastructure.aligner.simple import AlignerSimple
 from src.infrastructure.aligner.numba import AlignerNumba
 from src.infrastructure.reader import Reader
-from src.infrastructure.worker.celery import WorkerCelery
 from src.infrastructure.worker.dask import WorkerDask
 from src.infrastructure.worker.pool import WorkerPool
 from src.infrastructure.worker.sync import WorkerSync
@@ -23,8 +23,17 @@ mp_worker_to_process_type = {
     'sync': WorkerSync[List[SequenceData]],
     'pool': WorkerPool[List[SequenceData]],
     'dask': WorkerDask[List[SequenceData]],
-    'celery': WorkerCelery[List[SequenceData]],
+    # 'celery': WorkerCelery[List[SequenceData]],
 }
+
+
+class BenchmarkSample(BaseModel):
+    process_type: str
+    limit: int
+    workers: int
+    numba: bool
+    process_time_total: int
+    process_time_worker: int
 
 
 @click.group()
@@ -57,7 +66,7 @@ def process(file: click.File, process_type: ProcessType, workers: int, numba: bo
     click.echo(f'Output: {output}')
     click.echo('Processing...')
 
-    worker = mp_worker_to_process_type[process_type](workers)
+    worker = mp_worker_to_process_type[process_type](workers, True)
     props = ProcessorProps(
         limit=limit,
     )
@@ -78,25 +87,21 @@ def process(file: click.File, process_type: ProcessType, workers: int, numba: bo
             f.write(f'{data}\n')
 
 
-def run_combination(file: click.File, process_type: ProcessType, workers: int, numba: bool, limit: Optional[int]):
-    start_time = time.time()
-    output = 'output.fasta'
-
+def run_combination(file: click.File, process_type: ProcessType, workers: int, numba: bool, limit: Optional[int]) -> ProcessorResult | None:
     workers = max(1, workers)
     if process_type not in mp_worker_to_process_type:
         click.echo(f'Invalid process type: {process_type}')
         click.echo(f'Valid process types: {list(mp_worker_to_process_type.keys())}')
-        return
+        return None
 
     file_name = file.name
     click.echo(f'File: {file_name}')
     click.echo(f'Process type: {process_type}')
     click.echo(f'Workers: {workers}')
     click.echo(f'Numba: {numba}')
-    click.echo(f'Output: {output}')
     click.echo('Processing...')
 
-    worker = mp_worker_to_process_type[process_type](workers)
+    worker = mp_worker_to_process_type[process_type](workers, False)
     props = ProcessorProps(
         limit=limit,
     )
@@ -106,43 +111,45 @@ def run_combination(file: click.File, process_type: ProcessType, workers: int, n
     else:
         aligner = AlignerSimple()
     processor_instance = DataProcessor(props, worker, file_reader, aligner)
-    final_data = processor_instance.process()
-
-    with open(output + '.txt', 'w') as f:
-        for data in final_data:
-            f.write(f'{" ".join(data.sequence)}\n')
-
-    with open(output, 'w') as f:
-        for data in final_data:
-            f.write(f'{data}\n')
-
-    end_time = time.time()
-    execution_time = end_time - start_time
-    return execution_time
+    return processor_instance.process()
 
 
 @click.command()
 @click.argument('file', type=click.File('r'))
 def benchmark(file: click.File):
+    process_types = mp_worker_to_process_type.keys()
+    process_duration = [100, 200]
+    workers = [4]
+    numba = [False]
+
     combinations = [
-        {'process_type': 'sync', 'workers': 4, 'numba': False, 'limit': 100},
-        {'process_type': 'sync', 'workers': 4, 'numba': False, 'limit': 200},
-        {'process_type': 'pool', 'workers': 4, 'numba': False, 'limit': 100},
-        {'process_type': 'pool', 'workers': 4, 'numba': False, 'limit': 200},
-        {'process_type': 'dask', 'workers': 4, 'numba': False, 'limit': 100},
-        {'process_type': 'dask', 'workers': 4, 'numba': False, 'limit': 200},
+        {'process_type': p_type, 'workers': w, 'numba': n, 'limit': d}
+        for p_type in process_types
+        for w in workers
+        for d in process_duration
+        for n in numba
     ]
 
+    timed_results = {}
     results = {}
+    results_typed: List[BenchmarkSample] = []
     for combination in combinations:
         times = []
-        execution_time = run_combination(file, **combination)
-        times.append(execution_time)
-        avg_time = np.mean(times)
-        combination_label = f"{combination['process_type']} (Limit: {combination['limit']})"
-        results[combination_label] = avg_time
+        combination_result = run_combination(file, **combination)
+        results_typed.append(BenchmarkSample(
+            process_time_worker=combination_result.metadata.processing_time_ms,
+            process_time_total=combination_result.metadata.total_time_ms,
+            limit=combination['limit'],
+            numba=combination['numba'],
+            process_type=combination['process_type'],
+            workers=combination['workers'],
+        ))
 
-    plt.bar(results.keys(), results.values())
+    results_flatted = {}
+    for item in results_typed:
+        results_flatted[f"{item.process_type} [{item.limit}]"] = item.process_time_total
+
+    plt.bar(results_flatted.keys(), results_flatted.values())
     plt.xlabel('Combination')
     plt.ylabel('Average Execution Time (s)')
     plt.title('Benchmark Results')
