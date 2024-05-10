@@ -144,8 +144,6 @@ class AlignerSimple(Aligner):
             return batch
 
         (seq1, seq2, _) = self.needleman_wunsch(batch[0].sequence, batch[1].sequence)
-        sliced_batch = batch[2:]
-        batch = [batch[0], batch[1]] + sliced_batch
         existing_alignment = [seq1, seq2]
 
         for sequence in batch[2:]:
